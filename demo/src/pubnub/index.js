@@ -25,21 +25,22 @@ class PubnubService {
 			console.log('--receive message--', m)
 
 			const channel = m.channel
-			const channelGroup = m.subscription
-			const timetoken = m.timetoken
-			const msg = m.message
+			// const channelGroup = m.subscription
+			// const timetoken = m.timetoken
+			// const msg = m.message
 			const publisher = m.publisher
 
 			// console.log(channel, channelGroup, timetoken, msg, publisher)
 
 			if (publisher === this.#userId) return
 
-			// TODO:更新room的lastMessage
+			// 更新room的lastMessage
+			// 不需要更新，因为会在初始化的时候fetch过来
+
+			this.#unknownChannelSub.next([m])
 
 			if (this.#channelMessageFns[channel]) {
 				this.#channelMessageFns[channel].next([m])
-			} else {
-				this.#unknownChannelSub.next([m])
 			}
 		},
 		status: s => {
@@ -107,19 +108,13 @@ class PubnubService {
 	}
 
 	resetRooms() {
-		this.loadingRooms = true
-		this.loadingLastMessageByRoom = 0
-		this.roomsLoadedCount = 0
-		this.rooms = []
-		this.roomsLoaded = true
-		this.startRooms = null
-		this.endRooms = null
-		this.resetMessages()
-		this.resetListen()
+		this.unsubscribeAll()
+		this.#unknownChannelSub.complete()
+		Object.values(this.#channelMessageFns).forEach(e => e.complete())
+		this.#channelMessageFns = {}
 	}
 
 	listen(channel) {
-		console.log(`--listen ${channel}--`)
 		if (!this.#channelMessageFns[channel]) {
 			this.#channelMessageFns[channel] = new Subject()
 		}
@@ -127,10 +122,21 @@ class PubnubService {
 		return this.#channelMessageFns[channel].asObservable()
 	}
 
+	off(channel) {
+		if (this.#channelMessageFns[channel]) {
+			this.#channelMessageFns[channel].complete()
+			delete this.#channelMessageFns[channel]
+		}
+	}
+
 	async subscribe(channels) {
 		await instance.subscribe({
 			channels: [...channels]
 		})
+	}
+
+	async unsubscribeAll() {
+		await instance.unsubscribeAll()
 	}
 
 	async subscribeGroups(groups, channels) {
@@ -151,56 +157,26 @@ class PubnubService {
 			channelGroup: group
 		})
 	}
-	async fetchHistory(channel, option) {
-		if (this.#fetchingHistorys[channel]) return Promise.resolve()
-
-		this.#fetchingHistorys[channel] = true
-		try {
-			console.log('fetch history')
-			const start = option?.start || Date.now() * 10000
-			const count = option?.count || 25
-
-			const res = await instance.fetchMessages({
-				channels: [channel],
-				start,
-				count,
-				includeUUID: true,
-				includeMessageType: true
-			})
-
-			let messages
-			if (res.channels[channel]) {
-				messages = res.channels[channel]
-			} else {
-				messages = []
-			}
-			if (!option?.onlyFetch && this.#channelMessageFns[channel]) {
-				this.#channelMessageFns[channel].next(messages)
-			}
-
-			return messages
-		} catch (e) {
-			throw e
-		} finally {
-			this.#fetchingHistorys[channel] = false
-		}
-	}
-	async messageCounts(channelTimetokens) {
-		const channels = channelTimetokens.map(e => e.channel)
-		const timetokens = channelTimetokens.map(e => e.timetoken)
-
-		await instance.messageCounts({
-			channels: [...channels],
-			channelTimetokens: [...timetokens]
-		})
-	}
-	async publish(channel, message) {
+	async publish(message) {
 		return await instance.publish({
-			channel,
-			message,
+			...message,
 			sendByPost: true
 		})
 	}
 }
 
-export default new PubnubService()
+export function createPubnub() {
+	if (!instance) instance = new PubnubService()
+
+	return instance
+}
+
+export function pubnubService() {
+	if (instance) return instance
+	return null
+}
+
+export function resetInstance() {
+	instance.resetRooms()
+	instance = null
+}

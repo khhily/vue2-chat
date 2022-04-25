@@ -53,6 +53,8 @@
 
 <script>
 import ChatContainer from './ChatContainer'
+import { initPubnub } from './pubnub/rooms'
+import { mapGetters } from 'vuex'
 
 export default {
 	components: {
@@ -64,26 +66,26 @@ export default {
 			theme: 'light',
 			showChat: false,
 			orders: [
-				{
-					_id: 'xxxx',
-					username: 'xxxx',
-					avatar: 'https://66.media.tumblr.com/avatar_c6a8eae4303e_512.png'
-				},
-				{
-					_id: 'xxxx2',
-					username: 'xxxx2',
-					avatar: 'https://avatarfiles.alphacoders.com/184/thumb-184913.jpg'
-				},
-				{
-					_id: 'xxxx3',
-					username: 'xxxx3',
-					avatar:
-						'https://vignette.wikia.nocookie.net/teamavatarone/images/4/45/Yoda.jpg/revision/latest?cb=20130224160049'
-				}
+				// {
+				// 	_id: 'xxxx',
+				// 	username: 'xxxx',
+				// 	avatar: 'https://66.media.tumblr.com/avatar_c6a8eae4303e_512.png'
+				// },
+				// {
+				// 	_id: 'xxxx2',
+				// 	username: 'xxxx2',
+				// 	avatar: 'https://avatarfiles.alphacoders.com/184/thumb-184913.jpg'
+				// },
+				// {
+				// 	_id: 'xxxx3',
+				// 	username: 'xxxx3',
+				// 	avatar:
+				// 		'https://vignette.wikia.nocookie.net/teamavatarone/images/4/45/Yoda.jpg/revision/latest?cb=20130224160049'
+				// }
 			],
 			// currentUserId: '6R0MijpK6M4AIrwaaCY2',
 			currentUserId: 'userId',
-			orderNo: 'xxxx',
+			orderNo: '',
 			isDevice: false,
 			showDemoOptions: true,
 			updatingData: false
@@ -91,6 +93,7 @@ export default {
 	},
 
 	computed: {
+		...mapGetters(['rooms']),
 		showOptions() {
 			return !this.isDevice || this.showDemoOptions
 		}
@@ -112,38 +115,14 @@ export default {
 		window.addEventListener('resize', ev => {
 			if (ev.isTrusted) this.isDevice = window.innerWidth < 500
 		})
-		this.$store.dispatch('initPubnub', 'userId').then(() => {
+
+		initPubnub('userId').then(() => {
 			this.showChat = true
 		})
 	},
 
 	methods: {
-		resetData() {
-			// firestoreService.getAllRooms().then(({ data }) => {
-			// 	data.forEach(async room => {
-			// 		await firestoreService.getMessages(room.id).then(({ data }) => {
-			// 			data.forEach(message => {
-			// 				firestoreService.deleteMessage(room.id, message.id)
-			// 				if (message.files) {
-			// 					message.files.forEach(file => {
-			// 						storageService.deleteFile(
-			// 							this.currentUserId,
-			// 							message.id,
-			// 							file
-			// 						)
-			// 					})
-			// 				}
-			// 			})
-			// 		})
-			// 		firestoreService.deleteRoom(room.id)
-			// 	})
-			// })
-			// firestoreService.getAllUsers().then(({ data }) => {
-			// 	data.forEach(user => {
-			// 		firestoreService.deleteUser(user.id)
-			// 	})
-			// })
-		},
+		resetData() {},
 		async addData() {
 			this.updatingData = true
 

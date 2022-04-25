@@ -63,12 +63,17 @@
 // import * as firebaseService from '@/database/firebase'
 // import * as storageService from '@/database/storage'
 import { mapGetters } from 'vuex'
-import { formatTimestamp } from '@/utils/dates'
 import { formatMessage } from '@/utils/message'
-import pubnubService from './pubnub/index'
-import { listenRoom } from './pubnub/room-list'
 
 import ChatWindow from './../../src/lib/ChatWindow'
+import { getRoom } from './pubnub/rooms'
+import {
+	createMessage,
+	fetchHistory,
+	listenMessage,
+	markMessagesSeen,
+	publish
+} from './pubnub/messages'
 // import ChatWindow, { Rooms } from 'vue-advanced-chat'
 // import ChatWindow from 'vue-advanced-chat'
 // import 'vue-advanced-chat/dist/vue-advanced-chat.css'
@@ -140,7 +145,7 @@ export default {
 					text: 'This is the second action'
 				}
 			],
-			messageSubscription: null
+			msgSub: null
 			// ,dbRequestCount: 0
 		}
 	},
@@ -149,7 +154,6 @@ export default {
 		...mapGetters([
 			'rooms',
 			'loadingRooms',
-			'loadingLastMessageByRoom',
 			'roomsLoadedCount',
 			'roomsLoaded',
 			'startRooms',
@@ -162,41 +166,50 @@ export default {
 			return this.isDevice ? window.innerHeight + 'px' : 'calc(100vh - 80px)'
 		},
 		roomId() {
+			if (!this.currentUserId || !this.orderNo) return ''
 			return `${this.currentUserId}.${this.orderNo}`
 		}
 	},
 
 	mounted() {
-		// this.roomId = `${this.currentUserId}.${this.orderNo}`
-		this.messageSubscription = pubnubService
-			.listen(this.roomId)
-			.subscribe(messages => {
-				this.$store.dispatch('getRoom', this.roomId).then(room => {
-					if (room) {
-						messages.forEach(message => {
-							this.messages.push(
-								formatMessage(room, message, this.currentUserId)
-							)
-						})
-					}
-				})
-			})
+		this.addMessageListen()
 	},
 
 	beforeUnmount() {
 		this.resetMessages()
-		this.messageSubscription?.unsubscribe()
-		// this.resetListen()
 	},
 
 	methods: {
+		addMessageListen() {
+			if (!this.roomId) return
+			console.log('add message listen')
+			this.msgSub?.unsubscribe()
+			console.log('listen ', this.roomId)
+			this.msgSub = listenMessage(this.roomId).subscribe(messages => {
+				const room = getRoom(this.roomId)
+				if (!room) return
+
+				messages.forEach(message => {
+					const sender = room.users.find(user => user._id === message.sender_id)
+					const formatted = formatMessage(
+						message.message,
+						this.currentUserId,
+						sender
+					)
+
+					formatted.seen[this.currentUserId] = true
+					this.messages.push(formatted)
+
+					markMessagesSeen(formatted, this.currentUserId)
+				})
+			})
+		},
 		resetMessages() {
 			this.messages = []
 			this.messagesLoaded = false
 			this.lastLoadedMessage = null
 			this.previousLastLoadedMessage = null
-			// this.listeners.forEach(listener => listener())
-			// this.listeners = []
+			this.msgSub?.unsubscribe()
 		},
 
 		resetForms() {
@@ -212,7 +225,6 @@ export default {
 		fetchMessages({ room, options = {} }) {
 			if (options.reset) {
 				this.resetMessages()
-				// this.roomId = room.roomId
 			}
 
 			if (this.previousLastLoadedMessage && !this.lastLoadedMessage) {
@@ -222,119 +234,59 @@ export default {
 			}
 
 			const params = {
-				onlyFetch: true
+				onlyFetch: true,
+				start:
+					this.lastLoadedMessage?.timetoken ||
+					(this.lastLoadedMessage?.ticks
+						? this.lastLoadedMessage?.ticks * 10000
+						: undefined)
 			}
-			if (this.lastLoadedMessage) {
-				params.start = this.lastLoadedMessage.id
-			}
 
-			pubnubService.fetchHistory(room.roomId, params).then(messages => {
-				const msgList = []
-				if (messages) {
-					console.log('fetched', room.roomId, messages.length)
-					if (!messages.length) {
-						console.log('no messages')
-						this.messagesLoaded = true
-						this.messages = [...this.messages]
-						return
-					}
+			const msgMap = this.messages.reduce((a, b) => {
+				a[b._id] = b
+				return a
+			}, {})
 
-					messages.forEach(msg => {
-						if (this.messages.findIndex(m => m.id == msg.timetoken) < 0) {
-							const formatted = formatMessage(room, msg, this.currentUserId)
-							msgList.push(formatted)
-
-							this.markMessagesSeen(room, formatted)
-						}
-					})
-
-					this.previousLastLoadedMessage = this.lastLoadedMessage
-					this.lastLoadedMessage = msgList[0]
-
-					console.log('fetch end', room.roomId, msgList.length)
+			fetchHistory(
+				room.roomId,
+				this.currentUserId,
+				params,
+				id => !!msgMap[id]
+			).then(messages => {
+				if (!messages.length) {
+					this.messagesLoaded = true
+					// this.messages = [...this.messages]
+					return
 				}
 
-				console.log('reset messages', room.roomId, this.messages.length)
-				this.messages = [...this.messages, ...msgList]
-				console.log('reset messages', room.roomId, this.messages.length)
+				this.previousLastLoadedMessage = this.lastLoadedMessage
+				this.lastLoadedMessage = messages[0]
 
-				if (msgList.length == 0) {
+				if (messages.length) {
+					this.messages = [...this.messages, ...messages]
+				}
+
+				if (!messages.length) {
 					this.messagesLoaded = true
 				}
 			})
 		},
 
-		markMessagesSeen(room, message) {
-			if (
-				message.sender_id !== this.currentUserId &&
-				(!message.seen || !message.seen[this.currentUserId])
-			) {
-				message.seen = message.seen || {}
-				message.seen[this.currentUserId] = new Date()
-				// TODO:提交保存
-			}
-		},
-
 		async sendMessage({ content, roomId, files, replyMessage }) {
-			const message = {
-				sender_id: this.currentUserId,
+			const message = createMessage(
 				content,
-				ticks: new Date().getTime()
-			}
+				this.currentUserId,
+				replyMessage,
+				files
+			)
 
-			// if (files) {
-			// 	message.files = this.formattedFiles(files)
-			// }
+			const r = getRoom(roomId)
 
-			if (replyMessage) {
-				message.replyMessage = {
-					_id: replyMessage._id,
-					content: replyMessage.content,
-					sender_id: replyMessage.senderId
-				}
+			const roomIds = r.users.map(user => `${user._id}.${this.orderNo}`)
 
-				if (replyMessage.files) {
-					message.replyMessage.files = replyMessage.files
-				}
-			}
+			const formatted = publish(roomIds, message, this.currentUserId)
 
-			const requests = [pubnubService.publish(roomId, message)]
-
-			const r = await this.$store.dispatch('getRoom', roomId)
-
-			if (r && r.users) {
-				requests.push(
-					...r.users
-						.filter(user => user._id !== this.currentUserId)
-						.map(user => {
-							return pubnubService.publish(
-								`${user._id}.${this.orderNo}`,
-								message
-							)
-						})
-				)
-			}
-
-			const results = await Promise.all(requests)
-
-			message.seen = { [this.currentUserId]: new Date() }
-
-			// 保存记录
-
-			const room = this.rooms.find(room => room.roomId === roomId)
-			if (room) {
-				this.messages.push(
-					formatMessage(room, { message, ...results[0] }, this.currentUserId)
-				)
-			}
-
-			if (files) {
-				for (let index = 0; index < files.length; index++) {
-					await this.uploadFile({ file: files[index], messageId: id, roomId })
-				}
-			}
-
-			// firestoreService.updateRoom(roomId, { lastUpdated: new Date() })
+			this.messages.push(formatted)
 		},
 
 		async uploadFile({ file, messageId, roomId }) {
@@ -344,32 +296,32 @@ export default {
 					type = file.type
 				}
 
-				storageService.listenUploadImageProgress(
-					this.currentUserId,
-					messageId,
-					file,
-					type,
-					progress => {
-						this.updateFileProgress(messageId, file.localUrl, progress)
-					},
-					_error => {
-						resolve(false)
-					},
-					async url => {
-						const message = await firestoreService.getMessage(roomId, messageId)
+				// storageService.listenUploadImageProgress(
+				// 	this.currentUserId,
+				// 	messageId,
+				// 	file,
+				// 	type,
+				// 	progress => {
+				// 		this.updateFileProgress(messageId, file.localUrl, progress)
+				// 	},
+				// 	_error => {
+				// 		resolve(false)
+				// 	},
+				// 	async url => {
+				// 		const message = await firestoreService.getMessage(roomId, messageId)
 
-						message.files.forEach(f => {
-							if (f.url === file.localUrl) {
-								f.url = url
-							}
-						})
+				// 		message.files.forEach(f => {
+				// 			if (f.url === file.localUrl) {
+				// 				f.url = url
+				// 			}
+				// 		})
 
-						await firestoreService.updateMessage(roomId, messageId, {
-							files: message.files
-						})
-						resolve(true)
-					}
-				)
+				// 		await firestoreService.updateMessage(roomId, messageId, {
+				// 			files: message.files
+				// 		})
+				// 		resolve(true)
+				// 	}
+				// )
 			})
 		},
 
@@ -380,29 +332,6 @@ export default {
 
 			message.files.find(file => file.url === fileUrl).progress = progress
 			this.messages = [...this.messages]
-		},
-
-		formattedFiles(files) {
-			const formattedFiles = []
-
-			files.forEach(file => {
-				const messageFile = {
-					name: file.name,
-					size: file.size,
-					type: file.type,
-					extension: file.extension || file.type,
-					url: file.url || file.localUrl
-				}
-
-				if (file.audio) {
-					messageFile.audio = true
-					messageFile.duration = file.duration
-				}
-
-				formattedFiles.push(messageFile)
-			})
-
-			return formattedFiles
 		},
 
 		openFile({ file }) {

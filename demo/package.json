@@ -15,8 +15,10 @@
 		"latest": "npm i https://github.com/antoine92190/vue-advanced-chat/tarball/master"
 	},
 	"dependencies": {
+		"axios": "^0.26.1",
 		"pubnub": "^5.0.1",
 		"rxjs": "^7.5.5",
+		"uuid": "^8.3.2",
 		"vue": "^2.6.14",
 		"vue-advanced-chat": "latest",
 		"vuex": "^3.6.2"
