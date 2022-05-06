@@ -1,20 +1,20 @@
 import axios from 'axios'
-import { formatMessage, formattedFiles } from '../utils/message'
+import { formatMessage, formattedFiles, getUUID24 } from '../utils/message'
 import { pubnubService } from './index'
 import { getRoom } from './rooms'
-import { v4 } from 'uuid'
 
 export function listenMessage(roomId) {
 	return pubnubService()?.listen(roomId)
 }
 
 export function createMessage(content, currentUserId, replyMessage, files) {
+	const replaceReg = /[-]+/gi
 	const message = {
 		sender_id: currentUserId,
 		content,
 		ticks: new Date().getTime(),
 		seen: { [currentUserId]: true },
-		_id: v4()
+		_id: getUUID24()
 	}
 
 	if (files) {
@@ -56,7 +56,7 @@ export async function publish(roomIds, message, currentUserId) {
 		const msgList = roomIds.map(roomId => {
 			return {
 				...mainMessage,
-				_id: roomId === selfRoomId ? mainMessage._id : v4(),
+				_id: roomId === selfRoomId ? mainMessage._id : getUUID24(),
 				roomId
 			}
 		})
@@ -64,22 +64,42 @@ export async function publish(roomIds, message, currentUserId) {
 		await saveMessages(msgList)
 
 		// 发消息
-		const resList = await Promise.all([
-			...msgList.map(msg =>
-				pubnubService()?.publish({
-					message: message,
-					channel: msg.roomId
+		const resList = []
+		try {
+			for (const m of msgList) {
+				const res = await pubnubService()?.publish({
+					message,
+					channel: m.roomId
 				})
+				resList.push(res)
+			}
+			// const resList = await Promise.all([
+			// 	...msgList.map(msg =>
+			// 		pubnubService()?.publish({
+			// 			message: message,
+			// 			channel: msg.roomId
+			// 		})
+			// 	)
+			// ])
+		} catch (e) {
+			console.error(e)
+			// 发送出错，要删除message记录？
+			await axios.post(
+				'/api/messages/delete',
+				msgList.map(m => m._id)
 			)
-		])
+			return
+		}
 
 		msgList.forEach((e, i) => {
 			e.timetoken = resList[i].timetoken
 		})
 
 		mainMessage.timetoken = msgList.find(
-			m => (m._id = mainMessage._id)
+			m => m._id === mainMessage._id
 		).timetoken
+
+		console.log(msgList.map(e => e.timetoken))
 
 		updateTimetoken(msgList.map(e => ({ _id: e._id, timetoken: e.timetoken })))
 	})
@@ -96,13 +116,8 @@ export const markMessagesSeen = (message, currentUserId) => {
 	}
 }
 
-export async function fetchHistory(
-	roomId,
-	currentUserId,
-	params,
-	existPredicate
-) {
-	const start = params?.start || Date.now() * 10000
+export async function fetchHistory(roomId, currentUserId, params) {
+	const start = params?.start
 	const count = params?.count || 25
 
 	const res = await axios.post('/api/messages/fetchMessages', {
@@ -122,10 +137,16 @@ export async function fetchHistory(
 	const newMsgMap = {}
 
 	messages.forEach(msg => {
-		if (!existPredicate(msg._id) && !newMsgMap[msg._id]) {
+		if (!newMsgMap[msg._id]) {
 			markMessagesSeen(msg, currentUserId)
 			newMsgMap[msg._id] = true
-			result.push(msg)
+			result.push(
+				formatMessage(msg, currentUserId, {
+					_id: msg.sender_id,
+					username: msg.username,
+					status: { state: 'online' }
+				})
+			)
 		}
 	})
 	return result
@@ -160,7 +181,7 @@ export async function insertMessage(roomId, message) {
 
 const updateMessageSeen = async function (message) {
 	await axios.post('/api/messages/updateSeen', {
-		id: message._id,
+		_id: message._id,
 		seen: {
 			...(message.seen || {})
 		}

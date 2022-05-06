@@ -12,7 +12,7 @@
 					Add Data
 				</button>
 			</div> -->
-			<span
+			<!-- <span
 				v-if="showOptions"
 				class="user-logged"
 				:class="{ 'user-logged-dark': theme === 'dark' }"
@@ -33,16 +33,18 @@
 						<img src="@/assets/github.svg" />
 					</a>
 				</button>
-			</div>
+			</div> -->
 
-			<chat-container
+			<router-view></router-view>
+
+			<!-- <chat-container
 				v-if="showChat"
 				:current-user-id="currentUserId"
 				:order-no="orderNo"
 				:theme="theme"
 				:is-device="isDevice"
 				@show-demo-options="showDemoOptions = $event"
-			/>
+			/> -->
 
 			<!-- <div class="version-container">
 				v1.0.0
@@ -53,7 +55,7 @@
 
 <script>
 import ChatContainer from './ChatContainer'
-import { initPubnub } from './pubnub/rooms'
+import { setOption } from './pubnub/rooms'
 import { mapGetters } from 'vuex'
 
 export default {
@@ -116,9 +118,11 @@ export default {
 			if (ev.isTrusted) this.isDevice = window.innerWidth < 500
 		})
 
-		initPubnub('userId').then(() => {
-			this.showChat = true
-		})
+		setOption()
+
+		// initPubnub('userId').then(() => {
+		// 	this.showChat = true
+		// })
 	},
 
 	methods: {

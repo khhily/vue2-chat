@@ -1,4 +1,4 @@
-import { pubnubService, createPubnub } from '@/pubnub'
+import { pubnubService, createPubnub, dispose } from '@/pubnub'
 import axios from 'axios'
 import store from '../store'
 
@@ -8,31 +8,50 @@ let loadingLastMessageByRoom = 0
 const fetchOrderInfo = async function (roomId) {
 	const array = roomId.split('.')
 	const orderNo = array[1]
+	const order = store.state.order.orders.find(s => s.orderNo === orderNo)
 
-	// const res = await axios.get(`/api/getOrderNo/${orderNo}`)
-	return {
+	const currentUserId = store.state.order.userId
+
+	const room = {
 		roomId,
 		_id: roomId,
-		avatar: '',
+		avatar: order.users.find(s => s.userId !== currentUserId).avatar,
 		roomName: orderNo,
 		unreadCount: 0,
-		users: [
-			{
-				_id: '132',
-				status: {
-					state: 'online'
-				},
-				username: '张三'
+		users: order.users.map(u => ({
+			_id: u.userId,
+			status: {
+				state: 'online'
 			},
-			{
-				_id: '456',
-				status: {
-					state: 'online'
-				},
-				username: '李四'
-			}
-		]
+			username: u.userName
+		}))
 	}
+
+	return room
+	// const res = await axios.get(`/api/getOrderNo/${orderNo}`)
+	// return {
+	// 	roomId,
+	// 	_id: roomId,
+	// 	avatar: '',
+	// 	roomName: orderNo,
+	// 	unreadCount: 0,
+	// 	users: [
+	// 		{
+	// 			_id: '132',
+	// 			status: {
+	// 				state: 'online'
+	// 			},
+	// 			username: '张三'
+	// 		},
+	// 		{
+	// 			_id: '456',
+	// 			status: {
+	// 				state: 'online'
+	// 			},
+	// 			username: '李四'
+	// 		}
+	// 	]
+	// }
 }
 
 const defaultOptions = {
@@ -108,32 +127,32 @@ const createRoom = async roomId => {
 	// 根据orderNo获取用户及订单信息
 	const newRoom = options?.onRoomCreateFetch?.(roomId)
 
-	// return newRoom
+	return newRoom
 
-	const room = {
-		roomId: roomId,
-		avatar: '',
-		roomName: orderNo,
-		unreadCount: 0,
-		users: [
-			{
-				_id: '1234',
-				status: {
-					state: 'online'
-				},
-				username: '张三'
-			},
-			{
-				_id: currentUserId,
-				status: {
-					state: 'online'
-				},
-				username: '李四'
-			}
-		]
-	}
+	// const room = {
+	// 	roomId: roomId,
+	// 	avatar: '',
+	// 	roomName: orderNo,
+	// 	unreadCount: 0,
+	// 	users: [
+	// 		{
+	// 			_id: '1234',
+	// 			status: {
+	// 				state: 'online'
+	// 			},
+	// 			username: '张三'
+	// 		},
+	// 		{
+	// 			_id: currentUserId,
+	// 			status: {
+	// 				state: 'online'
+	// 			},
+	// 			username: '李四'
+	// 		}
+	// 	]
+	// }
 
-	return room
+	// return room
 }
 
 const listenUnknownChannel = () => {
@@ -160,12 +179,12 @@ const listenUnknownChannel = () => {
 							)
 						} else {
 							// 新增room
-							room = await createRoom(message.channel, message.publisher)
+							let room = getRoom(message.channel)
+							let isCreate = false
 
-							const inRooms = getRoom(message.channel)
-
-							if (inRooms) {
-								room = inRooms
+							if (!room) {
+								room = await createRoom(message.channel)
+								isCreate = true
 							}
 
 							room.unreadCount++
@@ -179,11 +198,14 @@ const listenUnknownChannel = () => {
 								currentUserId,
 								sender
 							)
-							// 将创建的聊天室加入列表
-							options.onRoomCreate?.(room)
 
-							if (!inRooms) {
-								addRoomToDB(room)
+							if (isCreate) {
+								// 将创建的聊天室加入列表
+								options.onRoomCreate?.(room)
+
+								if (!inRooms) {
+									addRoomToDB(room)
+								}
 							}
 						}
 					})
@@ -225,8 +247,9 @@ const initData = async currentUserId => {
 	} catch (e) {
 		console.error(e)
 		return new Promise((resolve, reject) => {
+			const userId = currentUserId
 			setTimeout(async () => {
-				initData(currentUserId).then(resolve, reject)
+				initData(userId).then(resolve, reject)
 			}, 3000)
 		})
 	}
@@ -237,13 +260,28 @@ const resetRooms = () => {
 	options.onRoomsReset?.()
 }
 
-export const initPubnub = async (userId, option) => {
-	if (option) {
-		options = Object.assign({}, defaultOptions, option)
-	}
+let initialComplete = false
+let initialing = false
+let promise = null
+
+export const setOption = option => {
+	options = Object.assign({}, defaultOptions, option || {})
+}
+
+export const initPubnub = async userId => {
+	if (initialComplete) return Promise.resolve()
+
+	if (promise) return promise
+
 	createPubnub()
-	await pubnubService()?.init(userId)
-	await initData(userId)
+
+	promise = new Promise(async resolve => {
+		await pubnubService()?.init(userId)
+		await initData(userId)
+		initialComplete = true
+		resolve()
+		promise = null
+	})
 }
 
 export const cancelPubnub = async () => {
@@ -252,6 +290,10 @@ export const cancelPubnub = async () => {
 
 export const getRoom = roomId => {
 	return options.roomsGetter?.().find(r => r.roomId === roomId)
+}
+
+export const unlogin = () => {
+	dispose()
 }
 
 export async function resetListeners() {
@@ -305,7 +347,7 @@ export async function fetchMoreRooms(userId) {
 			createRoom(roomId).then(newRoom => {
 				newRoom.lastMessage = lastMessage
 				newRoom.unreadCount = count
-				options.onRoomCreate(newRoom)
+				options.onRoomCreate?.(newRoom)
 				roomInit(newRoom, currentUserId)
 
 				addRoomToDB(newRoom)
@@ -434,4 +476,28 @@ export async function fetchUnread(roomId, userId) {
 		userId
 	})
 	return res.data
+}
+
+export async function addRoom(roomId, userId) {
+	let rooms = options.roomsGetter?.()
+	let room
+	if (rooms && rooms.length) {
+		room = rooms.find(room => room.roomId === roomId)
+	}
+	if (room) return
+	if (!room) room = await createRoom(roomId)
+
+	rooms = options.roomsGetter?.()
+	if (rooms && rooms.length) {
+		const newRoom = rooms.find(room => room.roomId === roomId)
+
+		if (newRoom) {
+			return
+		}
+	}
+
+	options.onRoomCreate?.(room)
+	roomInit(room, userId)
+
+	addRoomToDB(room)
 }

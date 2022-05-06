@@ -1,10 +1,18 @@
+import { v4 } from 'uuid'
 import { parseTimestamp, formatTimestamp } from './dates'
+
+export function getUUID24() {
+	const arr = v4().split('-')
+
+	return arr[0] + arr[1] + arr[4]
+}
 
 export function formatMessage(inner, currentUserId, sender) {
 	const formattedMessage = {
 		...inner,
 		...{
 			senderId: inner.sender_id,
+			id: inner._id,
 			timestamp: parseTimestamp(
 				inner.ticks || inner.timestamp / 10000,
 				'HH:mm'
@@ -13,13 +21,13 @@ export function formatMessage(inner, currentUserId, sender) {
 				inner.ticks || inner.timestamp / 10000,
 				'DD MMMM YYYY'
 			),
-			username: room.users.find(user => inner.sender_id === user._id)?.username,
+			username: sender?.username || inner.username,
 			avatar: sender ? sender.avatar : inner.avatar,
 			distributed: true,
 			new:
 				inner.sender_id !== currentUserId &&
 				(!inner.seen || !inner.seen[currentUserId]),
-			seen: inner.sender_id === currentUserId ? inner.seen : {}
+			seen: inner.seen || {}
 		}
 	}
 

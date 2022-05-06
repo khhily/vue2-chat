@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import Vuex from 'vuex'
+import order from './order'
 
 Vue.use(Vuex)
 
@@ -71,5 +72,9 @@ export default new Vuex.Store({
 		startRooms: state => state.startRooms,
 		endRooms: state => state.endRooms,
 		currentRoom: state => state.currentRoom
+	},
+	actions: {},
+	modules: {
+		order
 	}
 })

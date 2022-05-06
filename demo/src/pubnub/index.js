@@ -16,6 +16,10 @@ class PubnubService {
 
 	#unknownChannelSub = new Subject()
 
+	#timeoutInit
+
+	#dispose = false
+
 	get userId() {
 		return this.#userId
 	}
@@ -69,6 +73,10 @@ class PubnubService {
 		if (this.#initialing) return
 		this.#initialing = true
 
+		if (this.#timeoutInit) {
+			clearTimeout(this.#timeoutInit)
+		}
+
 		try {
 			this.#userId = userId
 
@@ -78,6 +86,7 @@ class PubnubService {
 				subscribeKey: 'sub-c-37ce37ce-bee2-11ec-bd2a-8ab19e3fdcf0'
 			}
 
+			console.log('-- ' + this.userId + ' --')
 			instance = new PubNub({
 				publishKey,
 				subscribeKey,
@@ -96,8 +105,18 @@ class PubnubService {
 
 			this.#initialed = true
 		} catch (e) {
-			this.#initialing = false
-			await this.init()
+			console.error(e)
+			console.log('-- ' + this.userId + ' --')
+
+			if (this.#dispose) throw e
+
+			await new Promise(resolve => {
+				setTimeout(() => {
+					this.#initialing = false
+					resolve(this.init(userId))
+				}, 3000)
+			})
+			// await this.init()
 		} finally {
 			this.#initialing = false
 		}
@@ -108,6 +127,7 @@ class PubnubService {
 	}
 
 	resetRooms() {
+		this.#dispose = true
 		this.unsubscribeAll()
 		this.#unknownChannelSub.complete()
 		Object.values(this.#channelMessageFns).forEach(e => e.complete())
@@ -158,25 +178,38 @@ class PubnubService {
 		})
 	}
 	async publish(message) {
-		return await instance.publish({
-			...message,
-			sendByPost: true
-		})
+		try {
+			return await instance.publish({
+				...message,
+				sendByPost: true
+			})
+		} catch (e) {
+			if (this.#dispose) throw e
+
+			this.#initialed = false
+			await this.init(this.userId)
+
+			return await instance.publish({
+				...message,
+				sendByPost: true
+			})
+		}
 	}
 }
 
-export function createPubnub() {
-	if (!instance) instance = new PubnubService()
+const service = {
+	pubnub: new PubnubService()
+}
 
-	return instance
+export function createPubnub() {
+	if (!service.pubnub) service.pubnub = new PubnubService()
 }
 
 export function pubnubService() {
-	if (instance) return instance
-	return null
+	return service.pubnub
 }
 
-export function resetInstance() {
-	instance.resetRooms()
-	instance = null
+export function dispose() {
+	service.pubnub.resetRooms()
+	service.pubnub = null
 }

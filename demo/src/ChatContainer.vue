@@ -66,7 +66,7 @@ import { mapGetters } from 'vuex'
 import { formatMessage } from '@/utils/message'
 
 import ChatWindow from './../../src/lib/ChatWindow'
-import { getRoom } from './pubnub/rooms'
+import { getRoom, unlogin } from './pubnub/rooms'
 import {
 	createMessage,
 	fetchHistory,
@@ -176,6 +176,7 @@ export default {
 	},
 
 	beforeUnmount() {
+		unlogin()
 		this.resetMessages()
 	},
 
@@ -190,17 +191,19 @@ export default {
 				if (!room) return
 
 				messages.forEach(message => {
-					const sender = room.users.find(user => user._id === message.sender_id)
+					const sender = room.users.find(
+						user => user._id == message.message.sender_id
+					)
 					const formatted = formatMessage(
 						message.message,
 						this.currentUserId,
 						sender
 					)
 
-					formatted.seen[this.currentUserId] = true
-					this.messages.push(formatted)
-
+					// formatted.seen[this.currentUserId] = true
 					markMessagesSeen(formatted, this.currentUserId)
+
+					this.messages.push(formatted)
 				})
 			})
 		},
@@ -224,6 +227,7 @@ export default {
 
 		fetchMessages({ room, options = {} }) {
 			if (options.reset) {
+				console.log('reset')
 				this.resetMessages()
 			}
 
@@ -235,38 +239,38 @@ export default {
 
 			const params = {
 				onlyFetch: true,
-				start:
-					this.lastLoadedMessage?.timetoken ||
-					(this.lastLoadedMessage?.ticks
-						? this.lastLoadedMessage?.ticks * 10000
-						: undefined)
+				start: this.lastLoadedMessage?.timetoken,
+				startTicks: this.lastLoadedMessage?.ticks
 			}
 
-			const msgMap = this.messages.reduce((a, b) => {
-				a[b._id] = b
-				return a
-			}, {})
+			console.log('fetch history')
 
-			fetchHistory(
-				room.roomId,
-				this.currentUserId,
-				params,
-				id => !!msgMap[id]
-			).then(messages => {
+			fetchHistory(room.roomId, this.currentUserId, params).then(messages => {
+				console.log('fetch history end', messages)
 				if (!messages.length) {
 					this.messagesLoaded = true
-					// this.messages = [...this.messages]
 					return
 				}
 
-				this.previousLastLoadedMessage = this.lastLoadedMessage
-				this.lastLoadedMessage = messages[0]
+				const msgSet = new Set(this.messages.map(e => e._id))
 
-				if (messages.length) {
-					this.messages = [...this.messages, ...messages]
+				const finalMessages = []
+
+				messages.forEach(e => {
+					if (!msgSet.has(e._id)) {
+						msgSet.add(e._id)
+						finalMessages.push(e)
+					}
+				})
+
+				this.previousLastLoadedMessage = this.lastLoadedMessage
+				this.lastLoadedMessage = finalMessages[0]
+
+				if (finalMessages.length) {
+					this.messages = [...this.messages, ...finalMessages]
 				}
 
-				if (!messages.length) {
+				if (!finalMessages.length) {
 					this.messagesLoaded = true
 				}
 			})
@@ -284,7 +288,7 @@ export default {
 
 			const roomIds = r.users.map(user => `${user._id}.${this.orderNo}`)
 
-			const formatted = publish(roomIds, message, this.currentUserId)
+			const formatted = await publish(roomIds, message, this.currentUserId)
 
 			this.messages.push(formatted)
 		},
