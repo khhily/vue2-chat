@@ -32,6 +32,7 @@
 				<div
 					v-if="message.avatar && message.senderId !== currentUserId"
 					class="vac-avatar"
+					@click="onUserClick(message.senderId)"
 					:style="{ 'background-image': `url('${message.avatar}')` }"
 				/>
 				<div
@@ -191,14 +192,13 @@
 						}"
 						@click="$emit('open-failed-message', { message })"
 					>
-						<div class="vac-failure-text">
-							!
-						</div>
+						<div class="vac-failure-text">!</div>
 					</div>
 				</slot>
 				<div
 					v-if="message.avatar && message.senderId === currentUserId"
 					class="vac-avatar vac-avatar-current"
+					@click="onUserClick(message.senderId)"
 					:style="{ 'background-image': `url('${message.avatar}')` }"
 				/>
 				<div
@@ -262,7 +262,8 @@ export default {
 		'message-action-handler',
 		'send-message-reaction',
 		'select-message',
-		'unselect-message'
+		'unselect-message',
+		'user-info'
 	],
 
 	data() {
@@ -415,6 +416,9 @@ export default {
 					this.$emit('select-message', this.message)
 				}
 			}
+		},
+		onUserClick(userId) {
+			this.$emit('user-info', userId)
 		}
 	}
 }
