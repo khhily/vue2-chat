@@ -5,7 +5,7 @@ import axios from 'axios'
 import router from './routes/index'
 
 axios.interceptors.request.use(value => {
-	value.baseURL = 'http://localhost:18080'
+	value.baseURL = 'http://localhost:10800'
 	return value
 })
 

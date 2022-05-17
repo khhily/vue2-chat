@@ -553,8 +553,8 @@ export default {
 			this.$emit('open-user-tag', user)
 		},
 		onUserInfo(userId) {
-			const user = this.room.users.find(u => u._id === userId)
-			this.$emit('user-info', { user })
+			const user = this.room.users.find(u => u._id == userId)
+			this.$emit('user-info', user)
 		}
 	}
 }

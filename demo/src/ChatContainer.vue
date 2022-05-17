@@ -53,6 +53,7 @@
 			@fetch-messages="fetchMessages"
 			@send-message="sendMessage"
 			@open-file="openFile"
+			@user-info="onUserInfo"
 		>
 		</chat-window>
 	</div>
@@ -340,6 +341,10 @@ export default {
 
 		openFile({ file }) {
 			window.open(file.file.url, '_blank')
+		},
+
+		onUserInfo(e) {
+			console.log(e)
 		}
 	}
 }

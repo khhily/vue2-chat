@@ -79,7 +79,7 @@
 				@send-message-reaction="sendMessageReaction"
 				@typing-message="typingMessage"
 				@textarea-action-handler="textareaActionHandler"
-				@user-info="$emit('user-info')"
+				@user-info="onUserInfo"
 			>
 				<template v-for="(i, name) in $scopedSlots" #[name]="data">
 					<slot :name="name" v-bind="data" />
@@ -430,6 +430,9 @@ export default {
 				message,
 				roomId: this.room.roomId
 			})
+		},
+		onUserInfo(user) {
+			this.$emit('user-info', user)
 		}
 	}
 }

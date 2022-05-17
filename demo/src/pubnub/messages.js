@@ -137,6 +137,7 @@ export async function fetchHistory(roomId, currentUserId, params) {
 	const newMsgMap = {}
 
 	messages.forEach(msg => {
+		msg.avatar = 'http://localhost:10800/svg/icon-userchat.svg'
 		if (!newMsgMap[msg._id]) {
 			markMessagesSeen(msg, currentUserId)
 			newMsgMap[msg._id] = true
@@ -144,7 +145,8 @@ export async function fetchHistory(roomId, currentUserId, params) {
 				formatMessage(msg, currentUserId, {
 					_id: msg.sender_id,
 					username: msg.username,
-					status: { state: 'online' }
+					status: { state: 'online' },
+					avatar: 'http://localhost:10800/svg/icon-userchat.svg'
 				})
 			)
 		}
