@@ -79,6 +79,7 @@
 				@send-message-reaction="sendMessageReaction"
 				@typing-message="typingMessage"
 				@textarea-action-handler="textareaActionHandler"
+				@user-info="$emit('user-info')"
 			>
 				<template v-for="(i, name) in $scopedSlots" #[name]="data">
 					<slot :name="name" v-bind="data" />
@@ -219,7 +220,8 @@ export default {
 		'fetch-more-rooms',
 		'add-room',
 		'room-action-handler',
-		'message-selection-action-handler'
+		'message-selection-action-handler',
+		'user-info'
 	],
 
 	data() {

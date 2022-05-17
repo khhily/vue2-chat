@@ -96,6 +96,7 @@
 								@send-message-reaction="sendMessageReaction"
 								@select-message="selectMessage"
 								@unselect-message="unselectMessage"
+								@user-info="onUserInfo"
 							>
 								<template v-for="(idx, name) in $scopedSlots" #[name]="data">
 									<slot :name="name" v-bind="data" />
@@ -229,7 +230,8 @@ export default {
 		'open-file',
 		'open-user-tag',
 		'open-failed-message',
-		'textarea-action-handler'
+		'textarea-action-handler',
+		'user-info'
 	],
 
 	data() {
@@ -549,6 +551,10 @@ export default {
 		},
 		openUserTag(user) {
 			this.$emit('open-user-tag', user)
+		},
+		onUserInfo(userId) {
+			const user = this.room.users.find(u => u._id === userId)
+			this.$emit('user-info', { user })
 		}
 	}
 }
